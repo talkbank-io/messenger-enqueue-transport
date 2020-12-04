@@ -15,18 +15,16 @@ use Enqueue\AmqpTools\DelayStrategyAware;
 use Enqueue\AmqpTools\RabbitMqDelayPluginDelayStrategy;
 use Enqueue\AmqpTools\RabbitMqDlxDelayStrategy;
 use Enqueue\MessengerAdapter\EnvelopeItem\InteropMessageStamp;
-use Enqueue\MessengerAdapter\EnvelopeItem\TransportConfiguration;
-use Enqueue\MessengerAdapter\Exception\MissingMessageMetadataSetterException;
-use Enqueue\MessengerAdapter\Exception\SendingMessageFailedException;
 use Interop\Queue\Consumer;
-use Interop\Queue\Exception as InteropQueueException;
-use Interop\Queue\Message;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\LogicException;
-use Symfony\Component\Messenger\Exception\MessageDecodingFailedException;
-use Symfony\Component\Messenger\Stamp\DelayStamp;
 use Symfony\Component\Messenger\Transport\Serialization\SerializerInterface;
 use Symfony\Component\Messenger\Transport\TransportInterface;
+use Interop\Queue\Exception as InteropQueueException;
+use Interop\Queue\Message;
+use Enqueue\MessengerAdapter\Exception\MissingMessageMetadataSetterException;
+use Enqueue\MessengerAdapter\Exception\SendingMessageFailedException;
+use Enqueue\MessengerAdapter\EnvelopeItem\TransportConfiguration;
 use Symfony\Component\OptionsResolver\Options;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 
@@ -81,17 +79,11 @@ class QueueInteropTransport implements TransportInterface
             throw $e;
         }
 
-        try {
-            $envelope = $this->serializer->decode(array(
-                'body' => $interopMessage->getBody(),
-                'headers' => $interopMessage->getHeaders(),
-                'properties' => $interopMessage->getProperties(),
-            ));
-        } catch (MessageDecodingFailedException $e) {
-            $this->getConsumer()->reject($interopMessage);
-
-            throw $e;
-        }
+        $envelope = $this->serializer->decode(array(
+            'body' => $interopMessage->getBody(),
+            'headers' => $interopMessage->getHeaders(),
+            'properties' => $interopMessage->getProperties(),
+        ));
 
         $envelope = $envelope->with(new InteropMessageStamp($interopMessage));
 
@@ -137,20 +129,12 @@ class QueueInteropTransport implements TransportInterface
 
         $producer = $context->createProducer();
 
-        $delay = 0;
-        $delayStamp = $envelope->last(DelayStamp::class);
-        if (null !== $delayStamp) {
-            $delay = $delayStamp->getDelay();
-        } elseif (isset($this->options['deliveryDelay'])) {
-            $delay = $this->options['deliveryDelay'];
-        }
-        if ($delay > 0) {
+        if (isset($this->options['deliveryDelay'])) {
             if ($producer instanceof DelayStrategyAware) {
                 $producer->setDelayStrategy($this->options['delayStrategy']);
             }
-            $producer->setDeliveryDelay($delay);
+            $producer->setDeliveryDelay($this->options['deliveryDelay']);
         }
-
         if (isset($this->options['priority'])) {
             $producer->setPriority($this->options['priority']);
         }
